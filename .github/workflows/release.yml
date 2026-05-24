@@ -1,0 +1,59 @@
+name: release
+
+on:
+  release:
+    types: [published]
+  # IMPORTANT — workflow_dispatch baked in from day 1 (v0.3.0 lesson).
+  # release-please uses GITHUB_TOKEN to publish; GitHub's anti-recursion
+  # guard means downstream workflows triggered by GITHUB_TOKEN events
+  # do NOT fire. When that happens, the release is created but no
+  # artifacts get attached. The escape valve is to manually re-trigger
+  # release.yml — either via `gh release edit <tag> --draft` then
+  # `--draft=false` (refires `release.published` from a user token), OR
+  # via `gh workflow run release.yml`. The workflow_dispatch trigger
+  # below enables the second path. See
+  # references/workflow_dispatch_lesson.md in the scaffold skill for the
+  # full story.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build artifacts for (e.g. v0.3.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Build wheels
+        run: uv build --all-packages --wheel --out-dir dist/
+
+      - name: Export pinned requirements
+        run: |
+          uv export --frozen --no-dev --no-emit-workspace \
+                    --no-hashes --format requirements-txt \
+                    > dist/requirements.txt
+
+      - name: List built artifacts
+        run: ls -la dist/
+
+      - name: Upload artifacts to GH Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          gh release upload "$TAG" dist/*.whl dist/requirements.txt --clobber

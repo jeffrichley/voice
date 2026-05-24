@@ -1,0 +1,64 @@
+# Root pyproject — voice workspace (uv).
+# Member packages live under packages/*. Each owns its [project] metadata.
+# This file holds: workspace declaration, dev deps, shared ruff/pytest config.
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+voice = { workspace = true }
+
+[dependency-groups]
+# Dev tools only; real package deps live in member pyprojects.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.14",
+    "mypy>=1.11",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = [
+    "packages/voice/src",
+]
+extend-exclude = [
+    ".venv",
+    ".tmp",
+]
+
+[tool.ruff.lint]
+select = [
+    "F",
+    "E",
+    "I",
+    "UP",
+    "B",
+    "RUF100",
+]
+ignore = [
+    "E501",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "auto"
+skip-magic-trailing-comma = false
+docstring-code-format = true
+
+[tool.mypy]
+python_version = "3.12"
+files = [
+    "packages/voice/src",
+]
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/voice/tests",
+]
+asyncio_mode = "auto"
+addopts = "--import-mode=importlib"

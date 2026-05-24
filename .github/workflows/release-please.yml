@@ -1,0 +1,31 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5  # v4
+        id: release
+        with:
+          # NOTE: GITHUB_TOKEN is the default. It works for creating the
+          # release PR + the release itself. But events fired by
+          # GITHUB_TOKEN actions do NOT trigger downstream workflows
+          # (GitHub's anti-recursion guard). That means release.yml will
+          # NOT auto-fire on the release.published event from this bot.
+          # Either (a) accept the manual workflow_dispatch trigger as
+          # the escape valve, OR (b) replace with a PAT here:
+          #   token: ${{ secrets.RELEASE_PLEASE_PAT }}
+          # See references/workflow_dispatch_lesson.md in the scaffold
+          # skill for the full story.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
