@@ -44,7 +44,8 @@ The starter subset that proves the core capabilities work end-to-end.
 - `voice.Spec` — request object: voice_id + chunk_strategy + cache + write_to + seed + extra + watermark (flag exists, no-op in v0) + parallel (flag exists, raises in v0).
 - `voice.Result` — uniform response: audio + sample_rate + cache_key + cache_hit + path + manifest + timings (attribute population varies by Spec).
 - **Engine backends:** `QwenTTSBackend` (lazy-imports qwen-tts + torch) and `FakeTTSBackend` (deterministic synthetic, no torch, for tests).
-- **Voice registry:** YAML config file (`voices.yaml`), per-project location.
+- **Built-in voice cloning** via Qwen3-TTS's in-context-learning. Adding a voice = adding a `voices.yaml` entry with `ref_wav` + `ref_text`; `QwenTTSBackend.prepare_voice` builds the ICL prompt at startup. No LoRA training; that's deferred to v0.X+ as a separate API surface.
+- **Tiered voice catalog:** YAML config files looked up in order — local (`./.voice/voices.yaml`) → project root (`./voices.yaml`) → global (`~/.config/voice/voices.yaml`). First match wins per `voice_id`. Matches standard config-layering conventions (.git, .npm, .python-version) — most-specific scope overrides broader. v0 does whole-voice override only; per-field partial overrides are a v0.X polish.
 - **Cache:** filesystem hash store at `~/.cache/voice/`, minimal 6-field entry (audio, sha256, sample_rate, duration, generation_s, timestamp).
 - **Chunking strategies:** `none` / `sentence` / `paragraph`. Simple registry dict.
 - **Smoke tests** prove the apparatus.
@@ -64,7 +65,8 @@ v0 acceptance: a downstream consumer can `pip install voice`, register a voice, 
 
 Each here is roughly v0.2–v0.5 territory. Order is rough lean-on-priority, not committed.
 
-- **Voice cloning workflow.** User provides reference audio → library trains/registers a new voice. Audiobook spec already tiers this: **Library** (pre-existing voice), **Designed** (parameterized), **Cloned** (from ref audio). Voice library exposes the full tier.
+- **Voice cloning *API* (higher-level workflow).** Today (v0) cloning is registry-driven: drop a `ref_wav` next to a `voices.yaml` row and you have a cloned voice. The v0.X+ API is `voice.clone_voice(name, ref_audio, ref_text=...)` — a single call that registers a new voice in the appropriate catalog tier programmatically. Companion CLI (`voice clone <name> <ref.wav>`) likely lands at the same time. **NOT the same as custom LoRA training** — that's a separately-deferred concern (next bullet).
+- **Custom LoRA training pipeline.** Train a model-fine-tune from N hours of reference audio for higher-fidelity voice cloning than ICL alone can produce. Significantly more infrastructure (GPU training, model storage, evaluation). v0 + v0.X+ use Qwen3-TTS's built-in ICL only; LoRA is post-v1.0 ambition gated on explicit demand from a consumer where ICL fidelity isn't sufficient.
 - **Voice direction / acting layer.** Prompt-driven emotion/style ("calm and slow," "excited"). Qwen3-TTS supports this via prompt; library exposes as `Spec.direction="calm and slow"` or similar.
 - **Voice mixing / blending.** Combine voices in ratios (Pepper's voice is already 70/20/10 of three sources per the existing `VoiceInfo.blend` field). v0 carries the field through but doesn't expose mixing as a top-level operation; v0.X promotes blending to a first-class API.
 - **Streaming generation.** For very long content, stream chunks as synthesized instead of buffering whole. Required for interactive conversational use at long-utterance scale.
@@ -105,54 +107,58 @@ These are things voice EXPLICITLY does not do, ever. Consumers either do them th
 
 ---
 
-## 6. Open architectural questions for Jeff
+## 6. Architectural decisions (Jeff sign-off 2026-05-24)
 
-Each of these is a one-line decision Jeff can react to. Naming them here so they don't get buried.
+Each question was presented with options + a recommendation; Jeff's
+response is recorded as the decision. The original question + options
+are preserved for audit-trail.
 
-**6.1 — Voice catalog: per-project, per-workspace, or community?**
+**6.1 — Voice catalog scope.**
 
-Today (v0): YAML file per project (`./voices.yaml`). Each consumer's project has its own. **(A) Stay per-project forever.** Simple, isolated, no cross-project surprises. **(B) Add per-workspace layer** at v0.X — `~/.config/voice/voices.yaml` provides shared voices that any consumer in this workspace can use, with per-project overrides. **(C) Add community / index layer** at v0.X+ — a published catalog of voices (with reference audio attached) that anyone can pull from, like a package registry. Most ambitious. Probably not v0 ever. **Recommendation:** start (A), name (B) as v0.X candidate, hold (C) for v1.0+ if real demand surfaces.
+*Question:* Per-project, per-workspace, or community? Options (A) per-project forever, (B) per-workspace overlay, (C) community-index. Wren recommendation: (A) now, (B) later.
 
-**6.2 — Voice cloning workflow: where does training live?**
+**Decision: tiered lookup.** Local (`./.voice/voices.yaml`) → project root (`./voices.yaml`) → global (`~/.config/voice/voices.yaml`). First match per `voice_id` wins. Matches the standard config-layering convention (.git, .npm, .python-version) where most-specific scope overrides broader. Richer than my recommendation — Jeff named the tiered shape directly. Lands in v0, not deferred. Whole-voice override only in v0; per-field partial overrides are v0.X+.
 
-Voice from cloned reference audio. **(A) Voice library does the training** (depends on training infrastructure — LoRA fine-tuning, GPU-required, hours-long). **(B) Voice library accepts pre-trained reference audio + voice_id** and a separate tool/script does the training (out of scope for voice itself). **(C) Voice library exposes a `clone_voice(name, ref_audio)` API** that delegates to whatever training service is configured.
+**6.2 — Voice cloning workflow.**
 
-**Recommendation:** **(B) for v0–v0.X**, then **(C) for v1.0+** if a workflow emerges where multiple consumers want clone-on-demand. Audiobook spec's three-tier model (Library / Designed / Cloned) maps naturally to (B): the library tier is registry-only; designed + cloned tiers have their own creation workflows that produce ref audio + register it.
+*Question:* Does the library do training? Options (A) library does LoRA training, (B) library accepts pre-trained ref audio + voice_id, (C) `clone_voice()` API delegating to a training service. Wren recommendation: (B) for v0; (C) for v1.0+.
 
-**6.3 — Cross-engine voice equivalents: same voice_id across engines?**
+**Decision: built-in ICL only for v0 + v0.X; no LoRA training in the foreseeable plan.** v0 already does this via voices.yaml + ref_wav + `QwenTTSBackend.prepare_voice()` (see §2's "Built-in voice cloning" bullet). The v0.X `clone_voice()` API is the higher-level convenience layer over the same mechanism. Custom LoRA training is post-v1.0, gated on explicit demand where ICL fidelity is insufficient.
 
-Can `voice_id="pepper"` mean the same Pepper-voice whether the active engine is Qwen3-TTS, ElevenLabs, or OpenAI TTS? **(A) voice_id is engine-specific.** Each engine has its own voice catalog; switching engines = remapping voice_ids. **(B) voice_id is engine-agnostic; registry maps voice_id → per-engine config.** `voices.yaml` has a `pepper` entry that specifies engine-specific params for each engine that supports her. **(C) Voice library provides best-effort equivalency mapping** when a consumer requests `pepper` on an engine that doesn't have her configured (e.g., synthesize a near-match).
+**6.3 — Cross-engine voice equivalents.**
 
-**Recommendation:** **(B) for v0–v1.0**. Engine-agnostic IDs at the API surface; per-engine details inside the registry entry. (C) is dangerous (silent voice substitution).
+*Question:* Is `voice_id="pepper"` engine-agnostic? Options (A) engine-specific, (B) engine-agnostic with per-engine registry config, (C) best-effort equivalency. Wren recommendation: (B).
 
-**6.4 — Voice safety guards: library-level or consumer-level?**
+**Decision: (B) — engine-agnostic at the API surface; per-engine details inside the registry entry.** Same as recommendation. (C) is dangerous due to silent voice substitution; (A) leaks engine-coupling into consumer code.
 
-Audiobook spec has a guard-LLM concept that blocks named-person impersonation ("sound like Morgan Freeman"). **(A) Voice library has built-in guards** that refuse certain prompts/voices by default. **(B) Consumer-level** — voice library is policy-free; consumers add guards in their own layers. Audiobook turns guards on for public output; Pepper conversational doesn't because it's private.
+**6.4 — Voice safety guards.**
 
-**Recommendation:** **(B)**. Same shape as the cache-metadata split: voice is policy-free; consumers add the policy that fits their use. Audiobook's guard-LLM is an audiobook-layer concern.
+*Question:* Library-level or consumer-level? Options (A) library built-in, (B) consumer-level. Wren recommendation: (B).
 
-**6.5 — Streaming generation in v0.X — push or pull model?**
+**Decision: deferred with dependency.** Jeff's correct insight: library-level safety guards require an attestation pathway (a way for the voice-creator to assert "this voice has consent / isn't impersonating a specific person") that v0 doesn't have. The dependency is a `voice clone` CLI + attestation flow at voice-creation time; once that lands (probably v0.X+ alongside the cloning API), library-level guards become tractable. Until then: no built-in guards; consumers add safety policy in their own layers (audiobook's guard-LLM stays audiobook-layer).
 
-When streaming-synthesis lands, do consumers **pull** chunks from a generator (`for chunk in voice.generate_stream(...)`) or **push** chunks to a callback (`voice.generate_stream(..., on_chunk=lambda audio: ...)`)?
+**6.5 — Streaming generation: push or pull?**
 
-**Recommendation:** **pull (generator) as the primary**; callback as a thin wrapper for consumers who prefer it. Pull is more Pythonic and composes better with async.
+*Question:* For streaming-synthesis when it lands, pull-from-generator or push-to-callback? Wren recommendation: pull as primary.
 
-**6.6 — Telemetry: voice library tracks, or consumer reports?**
+**Decision: pull as primary.** Same as recommendation. Callback wrapper available for consumers who prefer it; pull composes better with async + is more Pythonic.
 
-GPU-minutes, throughput, cost projections, error rates. **(A) Voice library aggregates telemetry internally** and exposes a `voice.stats()` surface. **(B) Voice library returns telemetry per-call** (already partly true — `Result.generation_s`); consumers aggregate.
+**6.6 — Telemetry: library-aggregated or per-call return?**
 
-**Recommendation:** **(B)**. Same library-purity principle. If aggregation becomes a real need, it's a v0.X consumer-side wrapper, not library-internal state.
+*Question:* (A) library aggregates internally, (B) per-call return. Wren recommendation: (B).
+
+**Decision: (B) — per-call return.** Same as recommendation. `Result.generation_s` already in v0; further telemetry fields added to `Result` as needs surface. Library stays state-free; aggregation is consumer-side wrapper if needed.
 
 ---
 
-## What this brief asks you for
+## What this brief asked for (status)
 
-Three sign-offs:
+Three sign-offs requested:
 
-1. **v0 scope** (§2) — the subset that ships today.
-2. **v0.1 deferral** (§3) — parallel-gen waits for Monday.
-3. **Architectural answers** (§6) — your call on 6.1–6.6; we encode them in the implementation.
+1. ✅ **v0 scope** (§2) — Jeff approved with two refinements (tiered catalog + explicit built-in cloning call-out). Incorporated.
+2. ✅ **v0.1 deferral** (§3) — parallel-gen confirmed for Monday.
+3. ✅ **Architectural decisions** (§6) — 5 of 6 locked at his preferred shape; 6.4 deferred-with-dependency (CLI + attestation flow first).
 
-If §6 is too much to decide now, defaults are: 6.1 (A), 6.2 (B), 6.3 (B), 6.4 (B), 6.5 (pull), 6.6 (B). We can ship v0 on the defaults and revisit later.
+Implementation gate now open. Tasks #181–#185 unlocked; engine adapter starts first per the §9 dependency graph in the implementation spec (`2026-05-24-voice-v0-design.md`, sibling to this file).
 
-Anything in §4 you want to elevate to v0.1? Anything you want stricken from the list entirely?
+Anything in §4 to elevate to v0.1 or strike entirely? Jeff response if it lands: capture as a §4 edit.
