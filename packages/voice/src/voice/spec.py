@@ -24,8 +24,10 @@ class Spec:
     Optional (with conversational-fast-path defaults):
         chunk_strategy: ``"none"`` / ``"sentence"`` / ``"paragraph"``. Default ``"none"``.
         cache: enable content-addressed cache. Default ``False``.
-        parallel: enable parallel-gen (v0.1+). Default ``False``; ``True`` raises
-            ``NotImplementedError`` in v0.
+        parallel: enable parallel-gen via engine batching. Default ``False``.
+            v0.1+: actually works (was ``NotImplementedError`` in v0). When
+            combined with list-input or chunk_strategy, the orchestrator routes
+            through the backend's ``synthesize_batch``.
         write_to: if set, also writes audio to this path. ``result.path`` populates.
         watermark: EU AI Act Article 50 opt-in. Default ``False``. v0 wires the
             flag through but actual watermark insertion is v0.X+; ``True`` raises
@@ -35,6 +37,11 @@ class Spec:
         extra: engine-specific params (model_id, sample_rate_hz, attention impl,
             etc.). Frozen via tuple-of-pairs conversion under the hood so the
             outer Spec stays hashable.
+        max_batch_size: optional cap on batch size for parallel-gen. Default
+            ``None`` (unlimited; trust backend). When set, the orchestrator
+            slices large batches into sub-batches of this size. Use to avoid
+            GPU OOM on long-text-chunked workloads. v0.X+ may promote to
+            backend-suggested defaults.
     """
 
     voice_id: str
@@ -45,10 +52,14 @@ class Spec:
     watermark: bool = False
     seed: int = 42
     extra: dict[str, Any] = field(default_factory=dict)
+    max_batch_size: int | None = None
 
     def __hash__(self) -> int:
         # Custom hash because `extra: dict` is unhashable by default; we
         # hash the sorted key-value tuple of extra for determinism.
+        # NOTE: cache key derivation (voice/_cache_key.py) uses ONLY the
+        # output-affecting subset, NOT this hash — Spec.__hash__ is for
+        # general hashability (dict keys, set members), not cache keys.
         extra_items = tuple(sorted(self.extra.items()))
         return hash(
             (
@@ -60,6 +71,7 @@ class Spec:
                 self.watermark,
                 self.seed,
                 extra_items,
+                self.max_batch_size,
             )
         )
 
@@ -75,6 +87,7 @@ class Spec:
             and self.watermark == other.watermark
             and self.seed == other.seed
             and self.extra == other.extra
+            and self.max_batch_size == other.max_batch_size
         )
 
 

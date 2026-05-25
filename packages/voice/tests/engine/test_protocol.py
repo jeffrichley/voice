@@ -52,7 +52,10 @@ def test_voice_info_blend_optional() -> None:
 
 
 def test_tts_backend_is_runtime_checkable() -> None:
-    """TTSBackend is a runtime_checkable Protocol; isinstance() works."""
+    """TTSBackend is a runtime_checkable Protocol; isinstance() works.
+
+    v0.1: adapters must implement BOTH synthesize and synthesize_batch.
+    """
 
     class MinimalBackend:
         def prepare_voice(self, voice_id: str, ref_wav: Path, ref_text: str) -> None:
@@ -60,6 +63,11 @@ def test_tts_backend_is_runtime_checkable() -> None:
 
         def synthesize(self, voice_id: str, text: str, seed: int) -> tuple[bytes, float]:
             return b"", 0.0
+
+        def synthesize_batch(
+            self, voice_id: str, texts: list[str], seed: int
+        ) -> tuple[list[bytes], list[float]]:
+            return [b""] * len(texts), [0.0] * len(texts)
 
     assert isinstance(MinimalBackend(), TTSBackend)
 

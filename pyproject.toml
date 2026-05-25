@@ -75,3 +75,6 @@ testpaths = [
 ]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
+markers = [
+    "real_engine: requires real Qwen3-TTS engine (torch + qwen-tts + GPU). Skipped without VOICE_REAL_ENGINE_OK=1; required for done per the never-done-without-running rule (2026-05-24).",
+]

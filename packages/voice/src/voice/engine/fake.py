@@ -24,6 +24,7 @@ import struct
 import wave
 from pathlib import Path
 
+from voice.engine._batch_fallback import default_batch_loop
 from voice.engine.protocol import EmptyTextError, VoiceNotPreparedError
 
 
@@ -66,6 +67,17 @@ class FakeTTSBackend:
         # Deterministic "generation_s" — not real wall time, but stable per input.
         generation_s = round(duration_s * 0.1, 4)
         return wav_bytes, generation_s
+
+    def synthesize_batch(
+        self, voice_id: str, texts: list[str], seed: int
+    ) -> tuple[list[bytes], list[float]]:
+        """Sequential per-text fallback. Same output as N synthesize() calls.
+
+        Fake does NOT natively batch; it delegates to the module fallback.
+        Real backends that benefit from native batching (Qwen3-TTS,
+        ElevenLabs) override this with their engine-specific path.
+        """
+        return default_batch_loop(self, voice_id, texts, seed)
 
     @property
     def call_log(self) -> list[tuple[str, str, str, int]]:

@@ -92,6 +92,21 @@ class TTSBackend(Protocol):
         ``VoiceError`` subclass on any failure the caller should surface.
         """
 
+    def synthesize_batch(
+        self, voice_id: str, texts: list[str], seed: int
+    ) -> tuple[list[bytes], list[float]]:
+        """Generate audio for N texts under the same voice. Added in v0.1.
+
+        Returns ``(audios, timings)`` parallel-indexed with the input texts.
+        Adapters that natively batch (Qwen3-TTS via ``generate_voice_clone``
+        list-mode; ElevenLabs via concurrent HTTP) should override for the
+        speedup. Adapters that don't can delegate to
+        ``voice.engine._batch_fallback.default_batch_loop()`` for sequential
+        fallback. Raises ``VoiceError`` subclasses on per-item failures;
+        v0.1 fails the whole batch on first failure (partial-success
+        reporting is v0.X+).
+        """
+
 
 __all__ = [
     "EmptyTextError",

@@ -248,12 +248,19 @@ def test_chunking_plus_cache_second_run_all_hits(
 
 
 # ---------------------------------------------------------------------------
-# Deferred features raise NotImplementedError
+# Deferred features (v0.X+) still raise NotImplementedError
 # ---------------------------------------------------------------------------
 
-def test_parallel_true_raises(backend: FakeTTSBackend) -> None:
-    with pytest.raises(NotImplementedError, match="parallel.*v0.1"):
-        generate("Hello.", Spec(voice_id="pepper", parallel=True), backend=backend)
+def test_parallel_true_without_list_or_chunking_v0_path(backend: FakeTTSBackend) -> None:
+    """v0.1: parallel=True on str-input without chunking degenerates to v0 sequential.
+
+    Single-chunk batch isn't a useful parallelization; route through the
+    single-text path. No raise.
+    """
+    result = generate("Hello.", Spec(voice_id="pepper", parallel=True), backend=backend)
+    assert isinstance(result.audio, bytes)
+    # parallel_used False because v0-path was taken (no actual batch invocation).
+    assert result.parallel_used is False
 
 
 def test_watermark_true_raises(backend: FakeTTSBackend) -> None:

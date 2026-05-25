@@ -30,6 +30,23 @@ class Result:
     sample_rate_hz: int = 16_000
     cache_key: str | None = None
     cache_hit: bool = False
+    # NEW in v0.1:
+    cache_fully_hit: bool = False
+    """Did EVERY chunk in the batch hit the cache? (= all(per_chunk_hits))
+
+    Distinct from ``cache_hit`` which is the v0-compatible ``any()`` shape.
+    For v0 single-text calls: ``cache_fully_hit == cache_hit`` (N=1).
+    For batched calls in v0.1+: ``cache_fully_hit`` answers the strict
+    "did the whole batch shortcut?" question."""
+
+    parallel_used: bool = False
+    """Did the batch path actually fire? Transparent-silent-fallback flag.
+
+    UC2 (chunked-parallel) may silently fall back to sequential
+    cache+chunking when the spec §5 conditional path is active (engine
+    is item-coupled and cache+parallel was requested). Consumer checks
+    this flag to know whether parallel actually fired. Avoids the
+    "I asked for parallel; why is it slow?" surprise."""
 
     def __bytes__(self) -> bytes:
         """Conversational fast-path: ``bytes(result)`` → the audio.
