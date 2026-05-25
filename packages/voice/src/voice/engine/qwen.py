@@ -103,14 +103,22 @@ class QwenTTSBackend:
 
         try:
             # Seed for determinism — same (voice, text, seed) → same audio.
+            # Set before the model call; Qwen3TTSModel.generate_voice_clone
+            # doesn't expose a seed parameter so we control determinism via
+            # the global torch RNG state.
             self._torch.manual_seed(seed)
             if self._torch.cuda.is_available():
                 self._torch.cuda.manual_seed_all(seed)
 
-            audio_array, sample_rate = self._model.generate_with_prompt(
-                prompt=prompt,
+            # Qwen3TTSModel returns (wavs, sample_rate) where wavs is a list
+            # of audio arrays (one per batch element). For single-text input,
+            # we take wavs[0].
+            wavs, sample_rate = self._model.generate_voice_clone(
                 text=text,
+                language="english",
+                voice_clone_prompt=prompt,
             )
+            audio_array = wavs[0]
         except RuntimeError as exc:
             if "CUDA out of memory" in str(exc) or "out of memory" in str(exc).lower():
                 raise GPUOOMError(str(exc)) from exc
@@ -120,7 +128,7 @@ class QwenTTSBackend:
         import soundfile as sf
 
         buf = BytesIO()
-        sf.write(buf, audio_array, sample_rate, format="WAV", subtype="PCM_16")
+        sf.write(buf, audio_array, int(sample_rate), format="WAV", subtype="PCM_16")
         wav_bytes = buf.getvalue()
 
         generation_s = time.monotonic() - start
