@@ -197,8 +197,11 @@ def synthesize_batch(self, voice_id, texts, seed):
         raise
 
     total_s = time.monotonic() - start
-    # Apportion generation_s evenly across items (real per-item timing
-    # isn't directly available from the batched call).
+    # Apportion generation_s evenly across items: timings approximated by
+    # equal apportion for batched calls. Total wall-time is exact; per-item
+    # is nominal. Consumers needing real per-item timing can call
+    # synthesize_batch with singletons (loses GPU-batch speedup; gains
+    # per-item timing). Known v0.1 limit; documented in §8 open questions.
     per_item_s = total_s / len(texts)
     timings = [per_item_s] * len(texts)
 
@@ -235,7 +238,7 @@ class Spec:
 affects behavior but NOT output, so it's NOT in the cache key — same
 as `write_to` exclusion).
 
-### 2.6 `Result.cache_fully_hit` addition
+### 2.6 `Result` additions
 
 ```python
 @dataclass(frozen=True)
@@ -249,12 +252,25 @@ class Result:
     cache_key: str | None = None
     cache_hit: bool = False                   # any() — consistent across versions
     cache_fully_hit: bool = False             # NEW: all() — "did the whole batch shortcut?"
+    parallel_used: bool = False               # NEW: did synthesize_batch actually fire?
 ```
 
 `cache_hit` retains v0 semantics (any chunk hit) for backward compat. New
 `cache_fully_hit` answers the strict question for batched calls. v0 single
 calls have `cache_fully_hit == cache_hit` when N=1; chunked-single in v0
 get the strict-all() version too.
+
+`parallel_used` is the **transparent-silent-fallback** flag for UC2.
+When the consumer passes `Spec(parallel=True)` but the orchestrator
+falls back to sequential (per §5 conditional path, or any other future
+reason), this flag reports the truth. UC2 consumers can check
+`result.parallel_used` to know whether parallel actually fired. Avoids
+the "I asked for parallel; why is it slow?" surprise.
+
+For UC1 (list-input + parallel): raise happens before any Result is
+built when the conditional path is active, so this flag would always
+be True or never get returned. For UC2: True when batch path fired;
+False when sequential fallback fired.
 
 ---
 
@@ -315,6 +331,7 @@ Result(
     cache_key=None,                              # per-chunk keys live in manifest
     cache_hit=any(per_chunk_hits),               # v0-consistent semantics
     cache_fully_hit=all(per_chunk_hits) if spec.cache else False,
+    parallel_used=True,                          # batch path fired (always True for UC1 reaching this point)
     manifest=[
         {"text": t, "cache_key": k, "cache_hit": h, "generation_s": gen}
         for t, k, h, gen in zip(texts, keys, per_chunk_hits, timings)
@@ -357,6 +374,7 @@ Result(
     cache_key=None,
     cache_hit=any(per_chunk_hits),
     cache_fully_hit=all(per_chunk_hits) if spec.cache else False,
+    parallel_used=True,                          # batch path fired (False when §5 fallback to sequential)
     manifest=[...] if spec.cache else None,
     sample_rate_hz=<from full_audio header>,
 )
@@ -364,6 +382,13 @@ Result(
 
 **Key distinction from UC1:** UC2 populates `.audio` (concat); UC1 populates
 `.audios` (list). Both populate `.timings` + (conditionally) `.manifest`.
+
+**`parallel_used` in UC2 silent-fallback case:** when §5 fallback engages
+(cache+parallel both set + engine is item-coupled), UC2 silently runs
+the v0 sequential cache+chunking path. The Result is built with
+`parallel_used=False` so consumers checking the flag know parallel did
+not actually fire. Avoids the "I asked for parallel; why is it slow?"
+surprise.
 
 ---
 
@@ -507,6 +532,13 @@ def test_batch_item_independence_empirical():
    success becomes a real consumer need.
 5. **Multi-GPU support.** v1.0+ when a consumer has multi-GPU + wants
    to saturate both.
+6. **Real per-item timing for batched calls.** v0.1 apportions total
+   wall-time equally across batch items (`per_item_s = total_s / N`).
+   Real per-item timing isn't directly available from
+   `Qwen3TTSModel.generate_voice_clone`. Consumers needing real
+   per-item timing today must call `synthesize_batch` with singletons
+   (loses GPU-batch speedup; gains per-item timing). v0.X+ may add
+   per-item-timing capture if engines start exposing it.
 
 ---
 
