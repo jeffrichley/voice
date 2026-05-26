@@ -1,0 +1,25 @@
+[project]
+name = "madrigal"
+dynamic = ["version"]
+description = "Polyphonic TTS engine library — parallel voice synthesis, content-addressed cache, named voice registry, and mode-aware delivery for streaming and batch consumers."
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/madrigal"]
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.0.0"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]

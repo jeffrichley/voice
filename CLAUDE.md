@@ -1,6 +1,10 @@
-# voice
+# madrigal
 
-Pluggable TTS engine library with content-addressed cache, parallel generation, named voice registry, and mode-aware delivery for streaming and batch consumers.
+Polyphonic TTS engine library — parallel voice synthesis, content-addressed cache, named voice registry, and mode-aware delivery for streaming and batch consumers.
+
+Library identity is `madrigal` (PyPI dist + Python module). The GitHub repository
+remains `jeffrichley/voice` to preserve URL/issue history; only the library
+name was changed (PyPI name collision with an unrelated Django/South package).
 
 ## Working in this repo
 
@@ -47,9 +51,9 @@ requirement profiles:
 
 **Hard constraints to preserve:**
 
-- **No bus or agent_core dependencies.** voice is a pure library; consumers
+- **No bus or agent_core dependencies.** madrigal is a pure library; consumers
   wire it into their own infrastructure. The `agent-core-voice` adapter
-  (inside agent_core's workspace) is the thin layer that wires voice into
+  (inside agent_core's workspace) is the thin layer that wires madrigal into
   agent_core's bus/MCP surface for in-agent_core consumers.
 - **Cross-consumer-equal API.** API design must serve each consumer's
   needs as first-class; don't privilege any one consumer's flow at the

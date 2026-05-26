@@ -1,7 +1,8 @@
-# Agent guidelines for voice
+# Agent guidelines for madrigal
 
 This file documents conventions for AI agents (Claude Code, Codex, etc.)
-working in this repo.
+working in this repo. The library is `madrigal`; the repo URL remains
+`jeffrichley/voice` for URL/issue continuity.
 
 ## Required reads before substantial changes
 
@@ -20,9 +21,9 @@ working in this repo.
 
 ## Project-specific guardrails
 
-- **No bus or agent_core dependencies.** voice is a pure library. NEVER
+- **No bus or agent_core dependencies.** madrigal is a pure library. NEVER
   add `from agent_core.X import ...` or any agent-core-* package as a
-  dependency. The structural separation between voice and agent_core is
+  dependency. The structural separation between madrigal and agent_core is
   load-bearing; it's enforced by living in a separate repo.
 - **Cross-consumer-equal API.** Three named consumers (Pepper
   conversational use via agent-core-voice adapter, audiobook pipeline,

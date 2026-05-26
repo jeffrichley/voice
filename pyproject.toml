@@ -1,4 +1,4 @@
-# Root pyproject — voice workspace (uv).
+# Root pyproject — madrigal workspace (uv).
 # Member packages live under packages/*. Each owns its [project] metadata.
 # This file holds: workspace declaration, dev deps, shared ruff/pytest config.
 
@@ -6,7 +6,7 @@
 members = ["packages/*"]
 
 [tool.uv.sources]
-voice = { workspace = true }
+madrigal = { workspace = true }
 
 [dependency-groups]
 # Dev tools only; real package deps live in member pyprojects.
@@ -22,7 +22,7 @@ dev = [
 line-length = 100
 target-version = "py312"
 src = [
-    "packages/voice/src",
+    "packages/madrigal/src",
 ]
 extend-exclude = [
     ".venv",
@@ -51,14 +51,14 @@ docstring-code-format = true
 [tool.mypy]
 python_version = "3.12"
 files = [
-    "packages/voice/src",
+    "packages/madrigal/src",
 ]
 warn_unused_ignores = true
 no_implicit_optional = true
 check_untyped_defs = true
 
 # Lazy-imported optional deps (QwenTTSBackend imports inside __init__ so the
-# rest of voice.engine stays importable without torch / qwen-tts installed).
+# rest of madrigal.engine stays importable without torch / qwen-tts installed).
 [[tool.mypy.overrides]]
 module = [
     "torch",
@@ -71,10 +71,10 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = [
-    "packages/voice/tests",
+    "packages/madrigal/tests",
 ]
 asyncio_mode = "auto"
 addopts = "--import-mode=importlib"
 markers = [
-    "real_engine: requires real Qwen3-TTS engine (torch + qwen-tts + GPU). Skipped without VOICE_REAL_ENGINE_OK=1; required for done per the never-done-without-running rule (2026-05-24).",
+    "real_engine: requires real Qwen3-TTS engine (torch + qwen-tts + GPU). Skipped without MADRIGAL_REAL_ENGINE_OK=1; required for done per the never-done-without-running rule (2026-05-24).",
 ]
