@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/jeffrichley/voice/compare/v0.1.0...v0.2.0) (2026-05-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* PyPI dist name and Python module name both change from `voice` to `madrigal`. Driver was a PyPI name collision (`voice` is squatted by an unrelated Django/South utility, making clean publish impossible under the original name).
+
+### Features
+
+* rename library from voice to madrigal ([#5](https://github.com/jeffrichley/voice/issues/5)) ([32eefef](https://github.com/jeffrichley/voice/commit/32eefefa2d69e0d25eb5f54833abe362019daaf2))
+
 ## 0.1.0 (2026-05-25)
 
 
