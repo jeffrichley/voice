@@ -3,17 +3,11 @@ name: release
 on:
   release:
     types: [published]
-  # IMPORTANT — workflow_dispatch baked in from day 1 (v0.3.0 lesson).
-  # release-please uses GITHUB_TOKEN to publish; GitHub's anti-recursion
-  # guard means downstream workflows triggered by GITHUB_TOKEN events
-  # do NOT fire. When that happens, the release is created but no
-  # artifacts get attached. The escape valve is to manually re-trigger
-  # release.yml — either via `gh release edit <tag> --draft` then
-  # `--draft=false` (refires `release.published` from a user token), OR
-  # via `gh workflow run release.yml`. The workflow_dispatch trigger
-  # below enables the second path. See
-  # references/workflow_dispatch_lesson.md in the scaffold skill for the
-  # full story.
+  # workflow_dispatch baked in from day 1 (v0.3.0 lesson). With the App-token
+  # swap in release-please.yml, this should rarely be needed — events
+  # authored by the App DO fire downstream workflows. Kept as belt-and-
+  # suspenders for the rare case the auto-fire from `release.published`
+  # misses.
   workflow_dispatch:
     inputs:
       tag:
@@ -25,7 +19,7 @@ permissions:
   contents: write
 
 jobs:
-  build-and-upload:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -57,3 +51,39 @@ jobs:
         run: |
           TAG="${{ github.event.release.tag_name || inputs.tag }}"
           gh release upload "$TAG" dist/*.whl dist/requirements.txt --clobber
+
+      # Stash the dist/ contents for the publish-pypi job. Only wheels —
+      # requirements.txt is GH-Release-only; not a PyPI artifact.
+      - name: Upload wheels as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: dist/*.whl
+          retention-days: 1
+          if-no-files-found: error
+
+  # Trusted Publisher (OIDC) — no PYPI_TOKEN secret needed. PyPI verifies
+  # this workflow's identity via GitHub OIDC against the Pending Publisher
+  # binding configured at:
+  #   https://pypi.org/manage/project/madrigal/settings/publishing/
+  # Binding shape: owner=jeffrichley, repo=voice, workflow=release.yml,
+  # environment=pypi. The `pypi` environment is configured in voice repo
+  # settings → Environments → pypi → restricted to branch=main + tag=v*.
+  publish-pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download wheels from workflow artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: dist/
+
+      - name: List dist before publish
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
